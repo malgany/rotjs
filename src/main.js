@@ -4,19 +4,14 @@ import wallMiddleUrl from "./assets/meio.png";
 import "./styles.css";
 
 const MAP_SIZE = 45;
-const VIEWPORT_SIZE = 15;
 const CANVAS_SIZE = 720;
-const VIEWPORT_CENTER = Math.floor(VIEWPORT_SIZE / 2);
-const FAR_SCALE = 0.52;
-const NEAR_SCALE = 1.28;
+const CELL_SIZE = CANVAS_SIZE / MAP_SIZE;
 const FOV_RADIUS = 10;
 const WALL = "#";
 const FLOOR = ".";
 const JOYSTICK_KNOB_LIMIT = 34;
 const JOYSTICK_DEAD_ZONE = 12;
 const JOYSTICK_STEP_MS = 140;
-const WALL_TILE_SIZE = 38;
-const WALL_TILE_MAX_SLICES = 72;
 
 const palette = {
   bg: "#08090a",
@@ -146,43 +141,6 @@ function computeFov() {
   });
 }
 
-function getCameraOrigin() {
-  const maxOrigin = MAP_SIZE - VIEWPORT_SIZE;
-
-  return {
-    x: Math.max(0, Math.min(state.player.x - VIEWPORT_CENTER, maxOrigin)),
-    y: Math.max(0, Math.min(state.player.y - VIEWPORT_CENTER, maxOrigin))
-  };
-}
-
-function getProjectionMetrics(y) {
-  const boundedY = Math.max(0, Math.min(y, VIEWPORT_SIZE - 1));
-  const depth = boundedY / (VIEWPORT_SIZE - 1);
-  const easedDepth = depth ** 1.35;
-  const scale = FAR_SCALE + (NEAR_SCALE - FAR_SCALE) * easedDepth;
-
-  return {
-    xStep: 38 * scale,
-    y: 34 + easedDepth * 612,
-    scale
-  };
-}
-
-function getProjectedCell(xOffset, y) {
-  const metrics = getProjectionMetrics(y);
-
-  return {
-    x: CANVAS_SIZE / 2 + xOffset * metrics.xStep,
-    y: metrics.y,
-    scale: metrics.scale
-  };
-}
-
-function getVisibleColumnRadius(y) {
-  const { xStep } = getProjectionMetrics(y);
-  return Math.ceil((CANVAS_SIZE / 2 - 32) / xStep);
-}
-
 function getGlyph(cell) {
   return cell === WALL ? "#" : ".";
 }
@@ -202,11 +160,10 @@ function clearCanvas() {
 }
 
 function drawGlyph(x, y, glyph, color, alpha = 1) {
-  const projected = getProjectedCell(x, y);
   context.fillStyle = color;
-  context.font = `${Math.round(29 * projected.scale)}px Consolas, 'Courier New', monospace`;
-  context.globalAlpha = (0.72 + projected.scale * 0.22) * alpha;
-  context.fillText(glyph, projected.x, projected.y);
+  context.font = `${Math.round(CELL_SIZE * 0.9)}px Consolas, 'Courier New', monospace`;
+  context.globalAlpha = alpha;
+  context.fillText(glyph, x * CELL_SIZE + CELL_SIZE / 2, y * CELL_SIZE + CELL_SIZE / 2);
   context.globalAlpha = 1;
 }
 
@@ -214,55 +171,20 @@ function getWallTile(mapX, mapY) {
   return getCell(mapX, mapY + 1) === FLOOR ? wallTiles.corner : wallTiles.middle;
 }
 
-function drawPerspectiveTile(image, screenXOffset, screenY, projected) {
-  const baseSize = WALL_TILE_SIZE * projected.scale;
-  const height = baseSize * 0.86;
-  const slices = Math.max(1, Math.min(WALL_TILE_MAX_SLICES, Math.ceil(height)));
-  const topProjection = getProjectedCell(screenXOffset, screenY - 0.36);
-  const bottomProjection = getProjectedCell(screenXOffset, screenY + 0.36);
-  const topWidth = baseSize * 0.9;
-  const bottomWidth = baseSize * 1.08;
-  const topY = projected.y - height / 2;
-
-  for (let slice = 0; slice < slices; slice += 1) {
-    const t = slice / slices;
-    const nextT = (slice + 1) / slices;
-    const centerX = topProjection.x + (bottomProjection.x - topProjection.x) * t;
-    const width = topWidth + (bottomWidth - topWidth) * t;
-    const y = topY + height * t;
-    const sliceHeight = height * (nextT - t);
-    const sourceY = image.naturalHeight * t;
-    const sourceHeight = image.naturalHeight * (nextT - t);
-
-    context.drawImage(
-      image,
-      0,
-      sourceY,
-      image.naturalWidth,
-      sourceHeight,
-      centerX - width / 2,
-      y,
-      width,
-      sliceHeight
-    );
-  }
-}
-
-function drawWallTile(screenXOffset, screenY, mapX, mapY, alpha = 1) {
+function drawWallTile(mapX, mapY, alpha = 1) {
   const tile = getWallTile(mapX, mapY);
-  const projected = getProjectedCell(screenXOffset, screenY);
 
   if (!tile.complete || tile.naturalWidth === 0) {
-    drawGlyph(screenXOffset, screenY, WALL, palette.wall, alpha);
+    drawGlyph(mapX, mapY, WALL, palette.wall, alpha);
     return;
   }
 
-  context.globalAlpha = (0.72 + projected.scale * 0.22) * alpha;
-  drawPerspectiveTile(tile, screenXOffset, screenY, projected);
+  context.globalAlpha = alpha;
+  context.drawImage(tile, mapX * CELL_SIZE, mapY * CELL_SIZE, CELL_SIZE, CELL_SIZE);
   context.globalAlpha = 1;
 }
 
-function drawMapCell(screenXOffset, screenY, mapX, mapY) {
+function drawMapCell(mapX, mapY) {
   if (!isInsideMap(mapX, mapY)) return;
 
   const cellKey = key(mapX, mapY);
@@ -272,16 +194,16 @@ function drawMapCell(screenXOffset, screenY, mapX, mapY) {
   const hiddenColor = cell === WALL ? palette.wallHidden : palette.floorHidden;
 
   if (cell === WALL) {
-    drawWallTile(screenXOffset, screenY, mapX, mapY, explored ? 1 : 0.86);
+    drawWallTile(mapX, mapY, explored ? 1 : 0.42);
     return;
   }
 
   drawGlyph(
-    screenXOffset,
-    screenY,
+    mapX,
+    mapY,
     getGlyph(cell),
     explored ? getColor(cell, visible) : hiddenColor,
-    explored ? 1 : 0.86
+    explored ? 1 : 0.42
   );
 }
 
@@ -289,18 +211,13 @@ function draw() {
   computeFov();
   clearCanvas();
 
-  const camera = getCameraOrigin();
-
-  for (let y = 0; y < VIEWPORT_SIZE; y += 1) {
-    const mapY = camera.y + y;
-    const columnRadius = getVisibleColumnRadius(y);
-
-    for (let xOffset = -columnRadius; xOffset <= columnRadius; xOffset += 1) {
-      drawMapCell(xOffset, y, state.player.x + xOffset, mapY);
+  for (let y = 0; y < MAP_SIZE; y += 1) {
+    for (let x = 0; x < MAP_SIZE; x += 1) {
+      drawMapCell(x, y);
     }
   }
 
-  drawGlyph(0, state.player.y - camera.y, "@", palette.player);
+  drawGlyph(state.player.x, state.player.y, "@", palette.player);
 }
 
 function movePlayer(dx, dy) {

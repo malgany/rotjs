@@ -58,35 +58,19 @@ input {
   gap: 9px;
 }
 
-.perspective-icon {
+.map-icon {
   position: relative;
   width: 24px;
-  height: 18px;
+  height: 24px;
   flex: 0 0 auto;
-  transform: skewX(-18deg) rotate(-8deg);
-}
-
-.perspective-icon::before,
-.perspective-icon::after {
-  content: "";
-  position: absolute;
   border: 1px solid #d5d8dc;
-  background: rgba(213, 216, 220, 0.08);
+  background:
+    linear-gradient(#d5d8dc, #d5d8dc) 33% 0 / 1px 100% no-repeat,
+    linear-gradient(#d5d8dc, #d5d8dc) 66% 0 / 1px 100% no-repeat,
+    linear-gradient(90deg, #d5d8dc, #d5d8dc) 0 33% / 100% 1px no-repeat,
+    linear-gradient(90deg, #d5d8dc, #d5d8dc) 0 66% / 100% 1px no-repeat,
+    rgba(213, 216, 220, 0.08);
   box-shadow: 0 0 10px rgba(213, 216, 220, 0.16);
-}
-
-.perspective-icon::before {
-  left: 1px;
-  top: 5px;
-  width: 18px;
-  height: 10px;
-}
-
-.perspective-icon::after {
-  left: 6px;
-  top: 1px;
-  width: 18px;
-  height: 10px;
 }
 
 h1 {

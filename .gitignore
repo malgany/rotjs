@@ -1,4 +1,5 @@
 node_modules/
 dist/
 dev-server.log
+dev-server.err.log
 backup/

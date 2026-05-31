@@ -12,12 +12,12 @@ O Vite faz reload automatico durante o desenvolvimento. Para mudancas comuns em 
 
 ## Visual atual do jogo
 
-O mapa e desenhado em um canvas customizado, com uma perspectiva leve: linhas mais distantes aparecem menores e linhas mais proximas aparecem maiores.
+O mapa e desenhado em um canvas customizado, visto de cima em uma grade regular.
 
 Simbolos usados hoje:
 
 - `@`: jogador.
-- `#`: parede.
+- Paredes: desenhadas com imagens.
 - `.`: chao/caminho livre.
 - Simbolos claros: area visivel agora.
 - Simbolos escuros: area fora da visao atual ou ainda pouco conhecida.
