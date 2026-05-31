@@ -9,7 +9,10 @@
     <main id="app" aria-label="Jogo em terminal">
       <section class="game-stage">
         <header class="game-header">
-          <h1>ROT-JS</h1>
+          <div class="game-title">
+            <span class="perspective-icon" aria-label="Perspectiva inclinada" title="Perspectiva inclinada"></span>
+            <h1>ROT-JS</h1>
+          </div>
           <div class="game-actions">
             <label for="seed">Seed</label>
             <input id="seed" data-testid="seed" type="text" inputmode="numeric" pattern="[0-9]*" value="1979" />
@@ -18,11 +21,6 @@
         </header>
 
         <div id="rot-display" class="game-screen" aria-label="Mapa da caverna"></div>
-
-        <footer class="game-footer">
-          <span>WASD</span>
-          <span>SETAS</span>
-        </footer>
       </section>
     </main>
     <script type="module" src="/src/main.js"></script>

@@ -1,6 +1,6 @@
 :root {
-  color: #7cff8a;
-  background: #020402;
+  color: #d5d8dc;
+  background: #08090a;
   font-family: Consolas, "Courier New", monospace;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -21,7 +21,7 @@ body,
 body {
   margin: 0;
   min-height: 100vh;
-  background: #020402;
+  background: #08090a;
   overscroll-behavior: none;
 }
 
@@ -43,19 +43,55 @@ input {
   gap: 10px;
 }
 
-.game-header,
-.game-footer {
+.game-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: #56d96a;
-  text-shadow: 0 0 10px rgba(124, 255, 138, 0.28);
+  color: #9ba1aa;
+  text-shadow: 0 0 10px rgba(213, 216, 220, 0.18);
+}
+
+.game-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.perspective-icon {
+  position: relative;
+  width: 24px;
+  height: 18px;
+  flex: 0 0 auto;
+  transform: skewX(-18deg) rotate(-8deg);
+}
+
+.perspective-icon::before,
+.perspective-icon::after {
+  content: "";
+  position: absolute;
+  border: 1px solid #d5d8dc;
+  background: rgba(213, 216, 220, 0.08);
+  box-shadow: 0 0 10px rgba(213, 216, 220, 0.16);
+}
+
+.perspective-icon::before {
+  left: 1px;
+  top: 5px;
+  width: 18px;
+  height: 10px;
+}
+
+.perspective-icon::after {
+  left: 6px;
+  top: 1px;
+  width: 18px;
+  height: 10px;
 }
 
 h1 {
   margin: 0;
-  color: #9dff9c;
+  color: #f2f4f6;
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -68,20 +104,19 @@ h1 {
   gap: 8px;
 }
 
-label,
-.game-footer {
+label {
   font-size: 0.78rem;
 }
 
 input,
 button {
   min-height: 34px;
-  border: 1px solid #1d6f2e;
+  border: 1px solid #4a5058;
   border-radius: 0;
-  background: #020402;
-  color: #8cff8e;
+  background: #08090a;
+  color: #d5d8dc;
   outline: none;
-  box-shadow: inset 0 0 0 1px rgba(124, 255, 138, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(213, 216, 220, 0.08);
 }
 
 input {
@@ -97,20 +132,20 @@ button {
 button:hover,
 input:focus,
 button:focus-visible {
-  border-color: #9dff9c;
-  color: #d3ffd1;
+  border-color: #d5d8dc;
+  color: #ffffff;
 }
 
 .game-screen {
   width: 100%;
   aspect-ratio: 1;
   overflow: hidden;
-  border: 2px solid #1d6f2e;
-  background: #020402;
+  border: 2px solid #4a5058;
+  background: #08090a;
   box-shadow:
-    0 0 0 1px #06220c,
-    0 0 28px rgba(34, 177, 76, 0.18),
-    inset 0 0 36px rgba(34, 177, 76, 0.1);
+    0 0 0 1px #141619,
+    0 0 28px rgba(213, 216, 220, 0.12),
+    inset 0 0 36px rgba(213, 216, 220, 0.08);
   touch-action: none;
 }
 
@@ -118,13 +153,6 @@ button:focus-visible {
   display: block;
   width: 100%;
   height: 100%;
-  image-rendering: pixelated;
-}
-
-.game-footer {
-  justify-content: flex-start;
-  gap: 18px;
-  color: #2fa84a;
 }
 
 .touch-joystick {
@@ -134,15 +162,15 @@ button:focus-visible {
   z-index: 10;
   width: 116px;
   height: 116px;
-  border: 1px solid rgba(157, 255, 156, 0.58);
+  border: 1px solid rgba(213, 216, 220, 0.58);
   border-radius: 50%;
   background:
-    radial-gradient(circle at 50% 50%, rgba(157, 255, 156, 0.16), rgba(29, 111, 46, 0.08) 48%, rgba(2, 4, 2, 0.04) 72%),
-    rgba(2, 4, 2, 0.74);
+    radial-gradient(circle at 50% 50%, rgba(213, 216, 220, 0.16), rgba(74, 80, 88, 0.08) 48%, rgba(8, 9, 10, 0.04) 72%),
+    rgba(8, 9, 10, 0.74);
   box-shadow:
-    0 0 0 1px rgba(124, 255, 138, 0.12),
-    0 0 26px rgba(34, 177, 76, 0.28),
-    inset 0 0 28px rgba(124, 255, 138, 0.1);
+    0 0 0 1px rgba(213, 216, 220, 0.12),
+    0 0 26px rgba(213, 216, 220, 0.18),
+    inset 0 0 28px rgba(213, 216, 220, 0.1);
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -50%) scale(0.88);
@@ -157,7 +185,7 @@ button:focus-visible {
   position: absolute;
   left: 50%;
   top: 50%;
-  background: rgba(124, 255, 138, 0.24);
+  background: rgba(213, 216, 220, 0.24);
   transform: translate(-50%, -50%);
 }
 
@@ -182,12 +210,12 @@ button:focus-visible {
   top: 50%;
   width: 42px;
   height: 42px;
-  border: 1px solid #9dff9c;
+  border: 1px solid #d5d8dc;
   border-radius: 50%;
-  background: rgba(6, 34, 12, 0.92);
+  background: rgba(20, 22, 25, 0.92);
   box-shadow:
-    0 0 18px rgba(157, 255, 156, 0.36),
-    inset 0 0 12px rgba(124, 255, 138, 0.24);
+    0 0 18px rgba(213, 216, 220, 0.28),
+    inset 0 0 12px rgba(213, 216, 220, 0.18);
   transform: translate(-50%, -50%);
   will-change: transform;
 }
