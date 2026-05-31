@@ -22,6 +22,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background: #020402;
+  overscroll-behavior: none;
 }
 
 button,
@@ -110,6 +111,7 @@ button:focus-visible {
     0 0 0 1px #06220c,
     0 0 28px rgba(34, 177, 76, 0.18),
     inset 0 0 36px rgba(34, 177, 76, 0.1);
+  touch-action: none;
 }
 
 .game-screen canvas {
@@ -123,6 +125,71 @@ button:focus-visible {
   justify-content: flex-start;
   gap: 18px;
   color: #2fa84a;
+}
+
+.touch-joystick {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  width: 116px;
+  height: 116px;
+  border: 1px solid rgba(157, 255, 156, 0.58);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(157, 255, 156, 0.16), rgba(29, 111, 46, 0.08) 48%, rgba(2, 4, 2, 0.04) 72%),
+    rgba(2, 4, 2, 0.74);
+  box-shadow:
+    0 0 0 1px rgba(124, 255, 138, 0.12),
+    0 0 26px rgba(34, 177, 76, 0.28),
+    inset 0 0 28px rgba(124, 255, 138, 0.1);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.88);
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease;
+}
+
+.touch-joystick::before,
+.touch-joystick::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: rgba(124, 255, 138, 0.24);
+  transform: translate(-50%, -50%);
+}
+
+.touch-joystick::before {
+  width: 70%;
+  height: 1px;
+}
+
+.touch-joystick::after {
+  width: 1px;
+  height: 70%;
+}
+
+.touch-joystick.is-active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.touch-joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #9dff9c;
+  border-radius: 50%;
+  background: rgba(6, 34, 12, 0.92);
+  box-shadow:
+    0 0 18px rgba(157, 255, 156, 0.36),
+    inset 0 0 12px rgba(124, 255, 138, 0.24);
+  transform: translate(-50%, -50%);
+  will-change: transform;
 }
 
 @media (max-width: 520px) {
