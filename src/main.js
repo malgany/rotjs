@@ -10,7 +10,10 @@ import wallMiddle02Url from "./assets/concreto/meio-0-2.jpg";
 import wallMiddle12Url from "./assets/concreto/meio-1-2.jpg";
 import wallMiddle22Url from "./assets/concreto/meio-2-2.jpg";
 import floorTileUrl from "./assets/concreto/floor.jpg";
-import warriorSpritesheetUrl from "./assets/characters/warrior-spritesheet.png";
+import warriorUrl from "./assets/characters/warrior.png";
+import goblinUrl from "./assets/enemies/goblin.png";
+import impUrl from "./assets/enemies/imp.png";
+import skeletonUrl from "./assets/enemies/skeleton.png";
 import "./styles.css";
 
 const MAP_SIZE = 45;
@@ -29,9 +32,19 @@ const JOYSTICK_STEP_MS = 140;
 const AUTO_WALK_STEP_MS = 90;
 const FLOOR_TEXTURE_CELLS = 3;
 const WALL_MIDDLE_TEXTURE_CELLS = 3;
-const SPRITESHEET_COLUMNS = 4;
-const SPRITESHEET_ROWS = 4;
-const PLAYER_SPRITE_SCALE = 1.5;
+const PLAYER_SPRITE_SCALE = 1.9;
+const ENEMY_SPRITE_SCALE = 1.75;
+const ENEMY_COUNT = 6;
+const ENEMY_PATROL_RADIUS = 3;
+const ENEMY_VISION_RADIUS = 8;
+const ENEMY_STEP_MS = 420;
+const ENEMY_ATTACK_COOLDOWN_MS = 950;
+const PLAYER_ATTACK_COOLDOWN_MS = 430;
+const ATTACK_SWING_MS = 180;
+const HIT_FLASH_MS = 170;
+const DAMAGE_FLASH_MS = 260;
+const SHAKE_MS = 190;
+const PLAYER_MAX_HP = 6;
 
 const palette = {
   bg: "#08090a",
@@ -48,10 +61,19 @@ const state = {
   zoom: DEFAULT_CAMERA_ZOOM,
   walkTimer: null,
   stepTimer: null,
+  enemyTimer: null,
+  animationFrame: null,
+  enemies: [],
+  nextEnemyId: 1,
   player: { x: 0, y: 0 },
-  playerDirection: "down",
-  playerFrame: 0,
-  playerWalking: false
+  playerHp: PLAYER_MAX_HP,
+  playerDirection: "right",
+  playerWalking: false,
+  playerAttackUntil: 0,
+  playerAttackCooldownUntil: 0,
+  playerBlinkUntil: 0,
+  screenFlashUntil: 0,
+  shakeUntil: 0
 };
 
 const displayMount = document.querySelector("#rot-display");
@@ -70,7 +92,17 @@ const wallTiles = {
   ]
 };
 const floorTile = createTileImage(floorTileUrl);
-const playerSpritesheet = createTileImage(warriorSpritesheetUrl);
+const actorTiles = {
+  player: createTileImage(warriorUrl),
+  goblin: createTileImage(goblinUrl),
+  imp: createTileImage(impUrl),
+  skeleton: createTileImage(skeletonUrl)
+};
+const enemyTypes = [
+  { type: "goblin", hp: 2, damage: 1 },
+  { type: "skeleton", hp: 2, damage: 1 },
+  { type: "imp", hp: 3, damage: 1 }
+];
 
 const joystickState = {
   active: false,
@@ -122,7 +154,25 @@ function isOpen(x, y) {
   return getCell(x, y) === FLOOR;
 }
 
+function getAliveEnemies() {
+  return state.enemies.filter((enemy) => enemy.hp > 0);
+}
+
+function getEnemyAt(x, y) {
+  return getAliveEnemies().find((enemy) => enemy.x === x && enemy.y === y);
+}
+
+function isPlayerAt(x, y) {
+  return state.player.x === x && state.player.y === y;
+}
+
+function isActorBlocked(x, y, ignoredEnemyId = null) {
+  return isPlayerAt(x, y) || getAliveEnemies().some((enemy) => enemy.id !== ignoredEnemyId && enemy.x === x && enemy.y === y);
+}
+
 function generateCave() {
+  stopEnemyLoop();
+  stopAutoWalk();
   ROT.RNG.setSeed(state.seed);
   state.map.clear();
   state.visible.clear();
@@ -141,6 +191,11 @@ function generateCave() {
   }, 1);
 
   state.player = chooseStartCell();
+  state.playerHp = PLAYER_MAX_HP;
+  state.playerDirection = "right";
+  state.playerWalking = false;
+  spawnEnemies();
+  startEnemyLoop();
   draw();
 }
 
@@ -155,6 +210,50 @@ function chooseStartCell() {
 
 function distanceToCenter(cell, center) {
   return Math.abs(cell.x - center) + Math.abs(cell.y - center);
+}
+
+function distanceBetween(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function shuffleCells(cells) {
+  return cells.sort(() => ROT.RNG.getUniform() - 0.5);
+}
+
+function spawnEnemies() {
+  const openCells = shuffleCells([...state.map.entries()]
+    .filter(([, value]) => value === FLOOR)
+    .map(([cellKey]) => readKey(cellKey))
+    .filter((cell) => distanceBetween(cell, state.player) > 5));
+  const firstSightCells = openCells
+    .filter((cell) => distanceBetween(cell, state.player) <= ENEMY_VISION_RADIUS && lineOfSight(cell, state.player))
+    .slice(0, 2);
+  const selectedCells = [...firstSightCells];
+
+  for (const cell of openCells) {
+    if (selectedCells.length >= ENEMY_COUNT) break;
+    if (selectedCells.some((selected) => selected.x === cell.x && selected.y === cell.y)) continue;
+    selectedCells.push(cell);
+  }
+
+  state.enemies = selectedCells.map((cell, index) => {
+    const enemyType = enemyTypes[index % enemyTypes.length];
+
+    return {
+      id: state.nextEnemyId,
+      type: enemyType.type,
+      x: cell.x,
+      y: cell.y,
+      origin: { x: cell.x, y: cell.y },
+      hp: enemyType.hp,
+      maxHp: enemyType.hp,
+      damage: enemyType.damage,
+      direction: "right",
+      nextAttackAt: 0,
+      hitFlashUntil: 0
+    };
+  });
+  state.nextEnemyId += state.enemies.length;
 }
 
 function computeFov() {
@@ -174,6 +273,37 @@ function isInsideMap(x, y) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(value, max));
+}
+
+function lineOfSight(from, to) {
+  let x0 = from.x;
+  let y0 = from.y;
+  const x1 = to.x;
+  const y1 = to.y;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let error = dx - dy;
+
+  while (!(x0 === x1 && y0 === y1)) {
+    const twiceError = error * 2;
+    if (twiceError > -dy) {
+      error -= dy;
+      x0 += sx;
+    }
+    if (twiceError < dx) {
+      error += dx;
+      y0 += sy;
+    }
+    if (!(x0 === x1 && y0 === y1) && !isOpen(x0, y0)) return false;
+  }
+
+  return true;
+}
+
+function canEnemySeePlayer(enemy) {
+  return distanceBetween(enemy, state.player) <= ENEMY_VISION_RADIUS && lineOfSight(enemy, state.player);
 }
 
 function getRenderCellSize() {
@@ -298,76 +428,135 @@ function drawMapCell(mapX, mapY, camera) {
   drawFloorTile(mapX, mapY, explored ? (visible ? 1 : 0.55) : 0.18, camera);
 }
 
-function getPlayerFrameRow() {
-  if (state.playerDirection === "up") return 3;
-  if (state.playerDirection === "left" || state.playerDirection === "right") return 2;
-  return state.playerWalking ? 1 : 0;
-}
-
-function drawPlayer(camera) {
-  if (!playerSpritesheet.complete || playerSpritesheet.naturalWidth === 0) {
-    drawGlyph(state.player.x, state.player.y, "@", palette.player, 1, camera);
+function drawActorImage({ image, x, y, camera, direction = "right", scale = 1, flashWhite = false, attackUntil = 0 }) {
+  if (!image.complete || image.naturalWidth === 0) {
+    drawGlyph(x, y, "@", palette.player, 1, camera);
     return;
   }
 
-  const screenCell = getScreenCell(state.player.x, state.player.y, camera);
-  const frameWidth = playerSpritesheet.naturalWidth / SPRITESHEET_COLUMNS;
-  const frameHeight = playerSpritesheet.naturalHeight / SPRITESHEET_ROWS;
-  const frameColumn = state.playerFrame % SPRITESHEET_COLUMNS;
-  const frameRow = getPlayerFrameRow();
-  const spriteSize = screenCell.size * PLAYER_SPRITE_SCALE;
+  const now = performance.now();
+  const screenCell = getScreenCell(x, y, camera);
+  const spriteSize = screenCell.size * scale;
+  const attackProgress = Math.max(0, attackUntil - now) / ATTACK_SWING_MS;
+  const attackNudge = Math.sin(attackProgress * Math.PI * 2) * screenCell.size * 0.18;
+  const directionSign = direction === "left" ? -1 : 1;
   const spriteX = screenCell.x + (screenCell.size - spriteSize) / 2;
-  const spriteY = screenCell.y + (screenCell.size - spriteSize) / 2;
+  const spriteY = screenCell.y + screenCell.size - spriteSize * 0.88;
+  const drawX = spriteX + attackNudge * directionSign;
 
   context.save();
-  if (state.playerDirection === "left") {
-    context.translate(spriteX + spriteSize, spriteY);
+  context.imageSmoothingEnabled = false;
+  context.filter = flashWhite ? "brightness(3.8) grayscale(1)" : "none";
+  if (direction === "left") {
+    context.translate(drawX + spriteSize, spriteY);
     context.scale(-1, 1);
-    context.drawImage(
-      playerSpritesheet,
-      frameColumn * frameWidth,
-      frameRow * frameHeight,
-      frameWidth,
-      frameHeight,
-      0,
-      0,
-      spriteSize,
-      spriteSize
-    );
+    context.drawImage(image, 0, 0, spriteSize, spriteSize);
   } else {
-    context.drawImage(
-      playerSpritesheet,
-      frameColumn * frameWidth,
-      frameRow * frameHeight,
-      frameWidth,
-      frameHeight,
-      spriteX,
-      spriteY,
-      spriteSize,
-      spriteSize
-    );
+    context.drawImage(image, drawX, spriteY, spriteSize, spriteSize);
   }
+  context.filter = "none";
   context.restore();
 }
 
+function drawHealthBar(x, y, camera, current, max) {
+  if (current >= max) return;
+
+  const screenCell = getScreenCell(x, y, camera);
+  const width = screenCell.size * 0.82;
+  const height = Math.max(3, screenCell.size * 0.08);
+  const barX = screenCell.x + (screenCell.size - width) / 2;
+  const barY = screenCell.y + screenCell.size * 0.08;
+
+  context.fillStyle = "rgba(8, 9, 10, 0.78)";
+  context.fillRect(barX, barY, width, height);
+  context.fillStyle = "#c94444";
+  context.fillRect(barX, barY, width * (current / max), height);
+}
+
+function drawEnemies(camera, now) {
+  for (const enemy of getAliveEnemies()) {
+    if (!state.visible.has(key(enemy.x, enemy.y))) continue;
+
+    drawActorImage({
+      image: actorTiles[enemy.type],
+      x: enemy.x,
+      y: enemy.y,
+      camera,
+      direction: enemy.direction,
+      scale: ENEMY_SPRITE_SCALE,
+      flashWhite: enemy.hitFlashUntil > now
+    });
+    drawHealthBar(enemy.x, enemy.y, camera, enemy.hp, enemy.maxHp);
+  }
+}
+
+function drawPlayer(camera, now) {
+  drawActorImage({
+    image: actorTiles.player,
+    x: state.player.x,
+    y: state.player.y,
+    camera,
+    direction: state.playerDirection,
+    scale: PLAYER_SPRITE_SCALE,
+    flashWhite: state.playerBlinkUntil > now,
+    attackUntil: state.playerAttackUntil
+  });
+}
+
+function getShakeOffset(now) {
+  if (state.shakeUntil <= now) return { x: 0, y: 0 };
+
+  const progress = (state.shakeUntil - now) / SHAKE_MS;
+  const amplitude = 8 * progress;
+  return {
+    x: Math.sin(now * 0.09) * amplitude,
+    y: Math.cos(now * 0.11) * amplitude
+  };
+}
+
+function drawScreenEffects(now) {
+  if (state.screenFlashUntil > now) {
+    const alpha = 0.34 * ((state.screenFlashUntil - now) / DAMAGE_FLASH_MS);
+    context.fillStyle = `rgba(190, 22, 22, ${alpha})`;
+    context.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+  }
+
+  context.fillStyle = "rgba(8, 9, 10, 0.52)";
+  context.fillRect(12, 12, 118, 28);
+  context.fillStyle = "#d5d8dc";
+  context.font = "16px Consolas, 'Courier New', monospace";
+  context.textAlign = "left";
+  context.fillText(`HP ${state.playerHp}/${PLAYER_MAX_HP}`, 22, 27);
+  context.textAlign = "center";
+
+  if (hasActiveEffects(now)) scheduleAnimationFrame();
+}
+
 function draw() {
+  const now = performance.now();
   computeFov();
   clearCanvas();
 
   const camera = getCameraOrigin();
+  const shake = getShakeOffset(now);
   const viewportCells = getViewportCells();
   const startX = Math.max(0, Math.floor(camera.x));
   const startY = Math.max(0, Math.floor(camera.y));
   const endX = Math.min(MAP_SIZE - 1, Math.ceil(camera.x + viewportCells));
   const endY = Math.min(MAP_SIZE - 1, Math.ceil(camera.y + viewportCells));
 
+  context.save();
+  context.translate(shake.x, shake.y);
   for (let y = startY; y <= endY; y += 1) {
     for (let x = startX; x <= endX; x += 1) {
       drawMapCell(x, y, camera);
     }
   }
 
-  drawPlayer(camera);
+  drawEnemies(camera, now);
+  drawPlayer(camera, now);
+  context.restore();
+  drawScreenEffects(now);
 }
 
 function handleWheel(event) {
@@ -397,17 +586,47 @@ function settlePlayerIdle() {
   }, AUTO_WALK_STEP_MS);
 }
 
-function findPathTo(target) {
+function hasActiveEffects(now = performance.now()) {
+  return state.shakeUntil > now
+    || state.screenFlashUntil > now
+    || state.playerBlinkUntil > now
+    || state.playerAttackUntil > now
+    || getAliveEnemies().some((enemy) => enemy.hitFlashUntil > now);
+}
+
+function scheduleAnimationFrame() {
+  if (state.animationFrame) return;
+
+  state.animationFrame = requestAnimationFrame(() => {
+    state.animationFrame = null;
+    draw();
+  });
+}
+
+function triggerShake(duration = SHAKE_MS) {
+  state.shakeUntil = Math.max(state.shakeUntil, performance.now() + duration);
+  scheduleAnimationFrame();
+}
+
+function findPath(from, target, { ignoredEnemyId = null, allowTargetOccupied = false } = {}) {
   const path = [];
-  const astar = new ROT.Path.AStar(target.x, target.y, (x, y) => isInsideMap(x, y) && isOpen(x, y), {
+  const astar = new ROT.Path.AStar(target.x, target.y, (x, y) => {
+    if (!isInsideMap(x, y) || !isOpen(x, y)) return false;
+    if (allowTargetOccupied && x === target.x && y === target.y) return true;
+    return !isActorBlocked(x, y, ignoredEnemyId);
+  }, {
     topology: 4
   });
 
-  astar.compute(state.player.x, state.player.y, (x, y) => {
+  astar.compute(from.x, from.y, (x, y) => {
     path.push({ x, y });
   });
 
   return path;
+}
+
+function findPathTo(target) {
+  return findPath(state.player, target);
 }
 
 function walkPath(path) {
@@ -422,6 +641,13 @@ function walkPath(path) {
 
     if (!step || !isOpen(step.x, step.y)) {
       stopAutoWalk();
+      return;
+    }
+
+    const enemy = getEnemyAt(step.x, step.y);
+    if (enemy) {
+      stopAutoWalk();
+      attackEnemy(enemy);
       return;
     }
 
@@ -441,11 +667,71 @@ function handleCanvasClick(event) {
   if (!window.matchMedia("(pointer: fine)").matches) return;
 
   const target = getMapCellFromClientPoint(event.clientX, event.clientY);
+  const enemy = getEnemyAt(target.x, target.y);
+
+  if (enemy && distanceBetween(enemy, state.player) === 1) {
+    attackEnemy(enemy);
+    return;
+  }
 
   if (!isInsideMap(target.x, target.y) || !isOpen(target.x, target.y)) return;
   if (target.x === state.player.x && target.y === state.player.y) return;
 
   walkPath(findPathTo(target));
+}
+
+function faceTarget(target) {
+  if (target.x > state.player.x) state.playerDirection = "right";
+  if (target.x < state.player.x) state.playerDirection = "left";
+}
+
+function attackEnemy(enemy) {
+  const now = performance.now();
+  if (now < state.playerAttackCooldownUntil) return;
+
+  faceTarget(enemy);
+  state.playerAttackUntil = now + ATTACK_SWING_MS;
+  state.playerAttackCooldownUntil = now + PLAYER_ATTACK_COOLDOWN_MS;
+  enemy.hitFlashUntil = now + HIT_FLASH_MS;
+  enemy.hp -= 1;
+  triggerShake(120);
+
+  if (enemy.hp <= 0) {
+    state.enemies = state.enemies.filter((candidate) => candidate.id !== enemy.id);
+  }
+
+  draw();
+  scheduleAnimationFrame();
+}
+
+function attackNearestEnemy() {
+  const enemy = getAliveEnemies()
+    .filter((candidate) => distanceBetween(candidate, state.player) === 1)
+    .sort((a, b) => {
+      const directionScoreA = a.x > state.player.x === (state.playerDirection === "right") ? 0 : 1;
+      const directionScoreB = b.x > state.player.x === (state.playerDirection === "right") ? 0 : 1;
+      return directionScoreA - directionScoreB;
+    })[0];
+
+  if (enemy) attackEnemy(enemy);
+}
+
+function damagePlayer(amount) {
+  const now = performance.now();
+  state.playerHp = Math.max(0, state.playerHp - amount);
+  state.playerBlinkUntil = now + HIT_FLASH_MS;
+  state.screenFlashUntil = now + DAMAGE_FLASH_MS;
+  triggerShake();
+
+  if (state.playerHp <= 0) {
+    stopAutoWalk();
+    state.player = chooseStartCell();
+    state.playerHp = PLAYER_MAX_HP;
+    state.playerBlinkUntil = now + DAMAGE_FLASH_MS;
+  }
+
+  draw();
+  scheduleAnimationFrame();
 }
 
 function movePlayer(dx, dy) {
@@ -455,6 +741,13 @@ function movePlayer(dx, dy) {
     x: state.player.x + dx,
     y: state.player.y + dy
   };
+
+  const enemy = getEnemyAt(next.x, next.y);
+  if (enemy) {
+    updatePlayerAnimation(dx, dy);
+    attackEnemy(enemy);
+    return;
+  }
 
   if (!isOpen(next.x, next.y)) return;
 
@@ -470,8 +763,88 @@ function updatePlayerAnimation(dx, dy) {
   if (dy > 0) state.playerDirection = "down";
   if (dy < 0) state.playerDirection = "up";
 
-  state.playerFrame = (state.playerFrame + 1) % SPRITESHEET_COLUMNS;
   state.playerWalking = true;
+}
+
+function stopEnemyLoop() {
+  clearInterval(state.enemyTimer);
+  state.enemyTimer = null;
+}
+
+function startEnemyLoop() {
+  stopEnemyLoop();
+  state.enemyTimer = setInterval(tickEnemies, ENEMY_STEP_MS);
+}
+
+function getEnemyNeighbors(enemy) {
+  return [
+    { x: enemy.x + 1, y: enemy.y },
+    { x: enemy.x - 1, y: enemy.y },
+    { x: enemy.x, y: enemy.y + 1 },
+    { x: enemy.x, y: enemy.y - 1 }
+  ].filter((cell) => isOpen(cell.x, cell.y) && !isActorBlocked(cell.x, cell.y, enemy.id));
+}
+
+function moveEnemy(enemy, next) {
+  if (next.x > enemy.x) enemy.direction = "right";
+  if (next.x < enemy.x) enemy.direction = "left";
+  enemy.x = next.x;
+  enemy.y = next.y;
+}
+
+function choosePatrolStep(enemy) {
+  const neighbors = getEnemyNeighbors(enemy)
+    .filter((cell) => distanceBetween(cell, enemy.origin) <= ENEMY_PATROL_RADIUS);
+
+  if (neighbors.length === 0 || ROT.RNG.getUniform() < 0.35) return null;
+  return neighbors[ROT.RNG.getUniformInt(0, neighbors.length - 1)];
+}
+
+function chasePlayer(enemy) {
+  const path = findPath(enemy, state.player, {
+    ignoredEnemyId: enemy.id,
+    allowTargetOccupied: true
+  });
+
+  if (path.length <= 1) return;
+  const next = path[1];
+  if (isPlayerAt(next.x, next.y)) return;
+  if (isOpen(next.x, next.y) && !isActorBlocked(next.x, next.y, enemy.id)) moveEnemy(enemy, next);
+}
+
+function enemyAttackPlayer(enemy, now) {
+  if (now < enemy.nextAttackAt) return;
+
+  enemy.nextAttackAt = now + ENEMY_ATTACK_COOLDOWN_MS;
+  if (enemy.x > state.player.x) enemy.direction = "left";
+  if (enemy.x < state.player.x) enemy.direction = "right";
+  damagePlayer(enemy.damage);
+}
+
+function tickEnemies() {
+  const now = performance.now();
+  let moved = false;
+
+  for (const enemy of getAliveEnemies()) {
+    if (distanceBetween(enemy, state.player) === 1) {
+      enemyAttackPlayer(enemy, now);
+      continue;
+    }
+
+    if (canEnemySeePlayer(enemy)) {
+      chasePlayer(enemy);
+      moved = true;
+      continue;
+    }
+
+    const patrolStep = choosePatrolStep(enemy);
+    if (patrolStep) {
+      moveEnemy(enemy, patrolStep);
+      moved = true;
+    }
+  }
+
+  if (moved) draw();
 }
 
 function moveFromJoystick() {
@@ -480,6 +853,12 @@ function moveFromJoystick() {
 }
 
 function handleKeydown(event) {
+  if (event.key === " " || event.code === "Space") {
+    event.preventDefault();
+    attackNearestEnemy();
+    return;
+  }
+
   const movement = {
     ArrowUp: [0, -1],
     ArrowDown: [0, 1],

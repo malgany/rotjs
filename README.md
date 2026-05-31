@@ -16,7 +16,8 @@ O mapa e desenhado em um canvas customizado, visto de cima em uma grade regular.
 
 Simbolos usados hoje:
 
-- `@`: jogador.
+- Jogador: desenhado com imagem unica e virado por flip horizontal.
+- Inimigos: desenhados com imagens, patrulham perto da origem e perseguem quando enxergam o jogador.
 - Paredes: desenhadas com imagens.
 - Chao/caminho livre: desenhado com imagem.
 - Simbolos claros: area visivel agora.
