@@ -5,6 +5,9 @@ const SIZE = 45;
 const FOV_RADIUS = 10;
 const WALL = "#";
 const FLOOR = ".";
+const JOYSTICK_KNOB_LIMIT = 34;
+const JOYSTICK_DEAD_ZONE = 12;
+const JOYSTICK_STEP_MS = 140;
 
 const palette = {
   bg: "#020402",
@@ -37,8 +40,23 @@ const state = {
 const displayMount = document.querySelector("#rot-display");
 const seedInput = document.querySelector("#seed");
 const regenButton = document.querySelector("#regen");
+const joystick = document.createElement("div");
+const joystickKnob = document.createElement("div");
+
+const joystickState = {
+  active: false,
+  pointerId: null,
+  origin: { x: 0, y: 0 },
+  direction: { x: 0, y: 0 },
+  timer: null
+};
 
 displayMount.appendChild(display.getContainer());
+joystick.className = "touch-joystick";
+joystick.setAttribute("aria-hidden", "true");
+joystickKnob.className = "touch-joystick-knob";
+joystick.appendChild(joystickKnob);
+document.body.appendChild(joystick);
 
 function key(x, y) {
   return `${x},${y}`;
@@ -145,6 +163,11 @@ function movePlayer(dx, dy) {
   draw();
 }
 
+function moveFromJoystick() {
+  if (!joystickState.direction.x && !joystickState.direction.y) return;
+  movePlayer(joystickState.direction.x, joystickState.direction.y);
+}
+
 function handleKeydown(event) {
   const movement = {
     ArrowUp: [0, -1],
@@ -172,8 +195,90 @@ function regenerateFromInput() {
   generateCave();
 }
 
+function isControlTarget(target) {
+  return target instanceof Element && Boolean(target.closest("button, input, select, textarea, a, label"));
+}
+
+function showJoystick(x, y) {
+  joystick.style.left = `${x}px`;
+  joystick.style.top = `${y}px`;
+  joystick.classList.add("is-active");
+}
+
+function setJoystickKnob(x, y) {
+  joystickKnob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+}
+
+function updateJoystick(clientX, clientY) {
+  const rawX = clientX - joystickState.origin.x;
+  const rawY = clientY - joystickState.origin.y;
+  const distance = Math.hypot(rawX, rawY);
+  const limitedDistance = Math.min(distance, JOYSTICK_KNOB_LIMIT);
+  const scale = distance > 0 ? limitedDistance / distance : 0;
+  const knobX = rawX * scale;
+  const knobY = rawY * scale;
+
+  setJoystickKnob(knobX, knobY);
+
+  if (distance < JOYSTICK_DEAD_ZONE) {
+    joystickState.direction = { x: 0, y: 0 };
+    return;
+  }
+
+  joystickState.direction = Math.abs(rawX) > Math.abs(rawY)
+    ? { x: Math.sign(rawX), y: 0 }
+    : { x: 0, y: Math.sign(rawY) };
+}
+
+function stopJoystick() {
+  joystickState.active = false;
+  joystickState.pointerId = null;
+  joystickState.direction = { x: 0, y: 0 };
+  clearInterval(joystickState.timer);
+  joystickState.timer = null;
+  setJoystickKnob(0, 0);
+  joystick.classList.remove("is-active");
+}
+
+function handlePointerDown(event) {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  if (isControlTarget(event.target)) return;
+
+  event.preventDefault();
+  joystickState.active = true;
+  joystickState.pointerId = event.pointerId;
+  joystickState.origin = { x: event.clientX, y: event.clientY };
+  joystickState.direction = { x: 0, y: 0 };
+  showJoystick(event.clientX, event.clientY);
+  setJoystickKnob(0, 0);
+
+  try {
+    event.target.setPointerCapture?.(event.pointerId);
+  } catch {
+    // Synthetic pointer events used in tests may not have a capturable pointer.
+  }
+  clearInterval(joystickState.timer);
+  joystickState.timer = setInterval(moveFromJoystick, JOYSTICK_STEP_MS);
+}
+
+function handlePointerMove(event) {
+  if (!joystickState.active || event.pointerId !== joystickState.pointerId) return;
+  event.preventDefault();
+  updateJoystick(event.clientX, event.clientY);
+}
+
+function handlePointerEnd(event) {
+  if (!joystickState.active || event.pointerId !== joystickState.pointerId) return;
+  stopJoystick();
+}
+
 regenButton.addEventListener("click", regenerateFromInput);
 seedInput.addEventListener("change", regenerateFromInput);
 window.addEventListener("keydown", handleKeydown);
+window.addEventListener("pointerdown", handlePointerDown, { passive: false });
+window.addEventListener("pointermove", handlePointerMove, { passive: false });
+window.addEventListener("pointerup", handlePointerEnd);
+window.addEventListener("pointercancel", handlePointerEnd);
+window.addEventListener("blur", stopJoystick);
 
 generateCave();
