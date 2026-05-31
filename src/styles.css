@@ -140,6 +140,7 @@ button:focus-visible {
 }
 
 .touch-joystick {
+  display: none;
   position: fixed;
   left: 0;
   top: 0;
@@ -202,6 +203,12 @@ button:focus-visible {
     inset 0 0 12px rgba(213, 216, 220, 0.18);
   transform: translate(-50%, -50%);
   will-change: transform;
+}
+
+@media (pointer: coarse) {
+  .touch-joystick {
+    display: block;
+  }
 }
 
 @media (max-width: 520px) {

@@ -18,7 +18,7 @@ Simbolos usados hoje:
 
 - `@`: jogador.
 - Paredes: desenhadas com imagens.
-- `.`: chao/caminho livre.
+- Chao/caminho livre: desenhado com imagem.
 - Simbolos claros: area visivel agora.
 - Simbolos escuros: area fora da visao atual ou ainda pouco conhecida.
 
