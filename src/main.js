@@ -10,6 +10,12 @@ import wallMiddle02Url from "./assets/concreto/meio-0-2.jpg";
 import wallMiddle12Url from "./assets/concreto/meio-1-2.jpg";
 import wallMiddle22Url from "./assets/concreto/meio-2-2.jpg";
 import floorTileUrl from "./assets/concreto/floor.jpg";
+import warriorAttackUrl from "./assets/characters/warrior-attack.png";
+import warriorIdleDownUrl from "./assets/characters/warrior-idle-down.png";
+import warriorIdleUpUrl from "./assets/characters/warrior-idle-up.png";
+import warriorWalkDownUrl from "./assets/characters/warrior-walk-down.png";
+import warriorWalkSideUrl from "./assets/characters/warrior-walk-side.png";
+import warriorWalkUpUrl from "./assets/characters/warrior-walk-up.png";
 import warriorUrl from "./assets/characters/warrior.png";
 import goblinUrl from "./assets/enemies/goblin.png";
 import impUrl from "./assets/enemies/imp.png";
@@ -33,6 +39,10 @@ const AUTO_WALK_STEP_MS = 90;
 const FLOOR_TEXTURE_CELLS = 3;
 const WALL_MIDDLE_TEXTURE_CELLS = 3;
 const PLAYER_SPRITE_SCALE = 1.9;
+const PLAYER_ATTACK_SPRITE_SCALE = 2.65;
+const PLAYER_WALK_FRAME_COUNT = 3;
+const PLAYER_WALK_FRAME_MS = 120;
+const PLAYER_WALK_SETTLE_MS = PLAYER_WALK_FRAME_MS * 2;
 const ENEMY_SPRITE_SCALE = 1.75;
 const ENEMY_COUNT = 6;
 const ENEMY_PATROL_RADIUS = 3;
@@ -68,7 +78,9 @@ const state = {
   player: { x: 0, y: 0 },
   playerHp: PLAYER_MAX_HP,
   playerDirection: "right",
+  playerFacingDirection: "right",
   playerWalking: false,
+  playerWalkStartedAt: 0,
   playerAttackUntil: 0,
   playerAttackCooldownUntil: 0,
   playerBlinkUntil: 0,
@@ -94,6 +106,12 @@ const wallTiles = {
 const floorTile = createTileImage(floorTileUrl);
 const actorTiles = {
   player: createTileImage(warriorUrl),
+  playerAttack: createTileImage(warriorAttackUrl),
+  playerIdleDown: createTileImage(warriorIdleDownUrl),
+  playerIdleUp: createTileImage(warriorIdleUpUrl),
+  playerWalkDown: createTileImage(warriorWalkDownUrl),
+  playerWalkSide: createTileImage(warriorWalkSideUrl),
+  playerWalkUp: createTileImage(warriorWalkUpUrl),
   goblin: createTileImage(goblinUrl),
   imp: createTileImage(impUrl),
   skeleton: createTileImage(skeletonUrl)
@@ -193,7 +211,9 @@ function generateCave() {
   state.player = chooseStartCell();
   state.playerHp = PLAYER_MAX_HP;
   state.playerDirection = "right";
+  state.playerFacingDirection = "right";
   state.playerWalking = false;
+  state.playerWalkStartedAt = 0;
   spawnEnemies();
   startEnemyLoop();
   draw();
@@ -428,7 +448,18 @@ function drawMapCell(mapX, mapY, camera) {
   drawFloorTile(mapX, mapY, explored ? (visible ? 1 : 0.55) : 0.18, camera);
 }
 
-function drawActorImage({ image, x, y, camera, direction = "right", scale = 1, flashWhite = false, attackUntil = 0 }) {
+function drawActorImage({
+  image,
+  x,
+  y,
+  camera,
+  direction = "right",
+  scale = 1,
+  flashWhite = false,
+  attackUntil = 0,
+  frame = 0,
+  frameCount = 1
+}) {
   if (!image.complete || image.naturalWidth === 0) {
     drawGlyph(x, y, "@", palette.player, 1, camera);
     return;
@@ -436,6 +467,8 @@ function drawActorImage({ image, x, y, camera, direction = "right", scale = 1, f
 
   const now = performance.now();
   const screenCell = getScreenCell(x, y, camera);
+  const sourceWidth = image.naturalWidth / frameCount;
+  const sourceX = Math.min(frame, frameCount - 1) * sourceWidth;
   const spriteSize = screenCell.size * scale;
   const attackProgress = Math.max(0, attackUntil - now) / ATTACK_SWING_MS;
   const attackNudge = Math.sin(attackProgress * Math.PI * 2) * screenCell.size * 0.18;
@@ -450,9 +483,9 @@ function drawActorImage({ image, x, y, camera, direction = "right", scale = 1, f
   if (direction === "left") {
     context.translate(drawX + spriteSize, spriteY);
     context.scale(-1, 1);
-    context.drawImage(image, 0, 0, spriteSize, spriteSize);
+    context.drawImage(image, sourceX, 0, sourceWidth, image.naturalHeight, 0, 0, spriteSize, spriteSize);
   } else {
-    context.drawImage(image, drawX, spriteY, spriteSize, spriteSize);
+    context.drawImage(image, sourceX, 0, sourceWidth, image.naturalHeight, drawX, spriteY, spriteSize, spriteSize);
   }
   context.filter = "none";
   context.restore();
@@ -490,16 +523,68 @@ function drawEnemies(camera, now) {
   }
 }
 
+function getPlayerWalkFrame(now) {
+  if (!state.playerWalking) return 0;
+  return Math.floor((now - state.playerWalkStartedAt) / PLAYER_WALK_FRAME_MS) % PLAYER_WALK_FRAME_COUNT;
+}
+
+function getPlayerSprite(now) {
+  if (state.playerAttackUntil > now) {
+    return {
+      image: actorTiles.playerAttack,
+      direction: state.playerFacingDirection,
+      scale: PLAYER_ATTACK_SPRITE_SCALE,
+      attackUntil: state.playerAttackUntil,
+      frame: 0,
+      frameCount: 1
+    };
+  }
+
+  const frame = getPlayerWalkFrame(now);
+
+  if (state.playerDirection === "up") {
+    return {
+      image: state.playerWalking ? actorTiles.playerWalkUp : actorTiles.playerIdleUp,
+      direction: "right",
+      scale: PLAYER_SPRITE_SCALE,
+      frame: state.playerWalking ? frame : 0,
+      frameCount: state.playerWalking ? PLAYER_WALK_FRAME_COUNT : 1
+    };
+  }
+
+  if (state.playerDirection === "down") {
+    return {
+      image: state.playerWalking ? actorTiles.playerWalkDown : actorTiles.playerIdleDown,
+      direction: "right",
+      scale: PLAYER_SPRITE_SCALE,
+      frame: state.playerWalking ? frame : 0,
+      frameCount: state.playerWalking ? PLAYER_WALK_FRAME_COUNT : 1
+    };
+  }
+
+  return {
+    image: state.playerWalking ? actorTiles.playerWalkSide : actorTiles.player,
+    direction: state.playerDirection === "left" ? "left" : "right",
+    scale: PLAYER_SPRITE_SCALE,
+    frame: state.playerWalking ? frame : 0,
+    frameCount: state.playerWalking ? PLAYER_WALK_FRAME_COUNT : 1
+  };
+}
+
 function drawPlayer(camera, now) {
+  const sprite = getPlayerSprite(now);
+
   drawActorImage({
-    image: actorTiles.player,
+    image: sprite.image,
     x: state.player.x,
     y: state.player.y,
     camera,
-    direction: state.playerDirection,
-    scale: PLAYER_SPRITE_SCALE,
+    direction: sprite.direction,
+    scale: sprite.scale,
     flashWhite: state.playerBlinkUntil > now,
-    attackUntil: state.playerAttackUntil
+    attackUntil: sprite.attackUntil ?? 0,
+    frame: sprite.frame,
+    frameCount: sprite.frameCount
   });
 }
 
@@ -583,7 +668,7 @@ function settlePlayerIdle() {
     if (state.walkTimer) return;
     state.playerWalking = false;
     draw();
-  }, AUTO_WALK_STEP_MS);
+  }, PLAYER_WALK_SETTLE_MS);
 }
 
 function hasActiveEffects(now = performance.now()) {
@@ -591,6 +676,7 @@ function hasActiveEffects(now = performance.now()) {
     || state.screenFlashUntil > now
     || state.playerBlinkUntil > now
     || state.playerAttackUntil > now
+    || state.playerWalking
     || getAliveEnemies().some((enemy) => enemy.hitFlashUntil > now);
 }
 
@@ -636,6 +722,8 @@ function walkPath(path) {
 
   let nextStep = 1;
   state.playerWalking = true;
+  state.playerWalkStartedAt = performance.now();
+  scheduleAnimationFrame();
   state.walkTimer = setInterval(() => {
     const step = path[nextStep];
 
@@ -681,17 +769,30 @@ function handleCanvasClick(event) {
 }
 
 function faceTarget(target) {
-  if (target.x > state.player.x) state.playerDirection = "right";
-  if (target.x < state.player.x) state.playerDirection = "left";
+  if (target.x > state.player.x) {
+    state.playerDirection = "right";
+    state.playerFacingDirection = "right";
+  }
+  if (target.x < state.player.x) {
+    state.playerDirection = "left";
+    state.playerFacingDirection = "left";
+  }
+}
+
+function startPlayerAttack(now = performance.now()) {
+  if (now < state.playerAttackCooldownUntil) return;
+
+  state.playerAttackUntil = now + ATTACK_SWING_MS;
+  state.playerAttackCooldownUntil = now + PLAYER_ATTACK_COOLDOWN_MS;
+  return true;
 }
 
 function attackEnemy(enemy) {
   const now = performance.now();
-  if (now < state.playerAttackCooldownUntil) return;
 
   faceTarget(enemy);
-  state.playerAttackUntil = now + ATTACK_SWING_MS;
-  state.playerAttackCooldownUntil = now + PLAYER_ATTACK_COOLDOWN_MS;
+  if (!startPlayerAttack(now)) return;
+
   enemy.hitFlashUntil = now + HIT_FLASH_MS;
   enemy.hp -= 1;
   triggerShake(120);
@@ -708,12 +809,21 @@ function attackNearestEnemy() {
   const enemy = getAliveEnemies()
     .filter((candidate) => distanceBetween(candidate, state.player) === 1)
     .sort((a, b) => {
-      const directionScoreA = a.x > state.player.x === (state.playerDirection === "right") ? 0 : 1;
-      const directionScoreB = b.x > state.player.x === (state.playerDirection === "right") ? 0 : 1;
+      const directionScoreA = a.x > state.player.x === (state.playerFacingDirection === "right") ? 0 : 1;
+      const directionScoreB = b.x > state.player.x === (state.playerFacingDirection === "right") ? 0 : 1;
       return directionScoreA - directionScoreB;
     })[0];
 
-  if (enemy) attackEnemy(enemy);
+  if (enemy) {
+    attackEnemy(enemy);
+    return;
+  }
+
+  if (startPlayerAttack()) {
+    triggerShake(70);
+    draw();
+    scheduleAnimationFrame();
+  }
 }
 
 function damagePlayer(amount) {
@@ -745,6 +855,7 @@ function movePlayer(dx, dy) {
   const enemy = getEnemyAt(next.x, next.y);
   if (enemy) {
     updatePlayerAnimation(dx, dy);
+    state.playerWalking = false;
     attackEnemy(enemy);
     return;
   }
@@ -758,12 +869,25 @@ function movePlayer(dx, dy) {
 }
 
 function updatePlayerAnimation(dx, dy) {
-  if (dx > 0) state.playerDirection = "right";
-  if (dx < 0) state.playerDirection = "left";
-  if (dy > 0) state.playerDirection = "down";
-  if (dy < 0) state.playerDirection = "up";
+  const previousDirection = state.playerDirection;
 
+  if (dx > 0) {
+    state.playerDirection = "right";
+    state.playerFacingDirection = "right";
+  } else if (dx < 0) {
+    state.playerDirection = "left";
+    state.playerFacingDirection = "left";
+  } else if (dy > 0) {
+    state.playerDirection = "down";
+  } else if (dy < 0) {
+    state.playerDirection = "up";
+  }
+
+  if (!state.playerWalking || previousDirection !== state.playerDirection) {
+    state.playerWalkStartedAt = performance.now();
+  }
   state.playerWalking = true;
+  scheduleAnimationFrame();
 }
 
 function stopEnemyLoop() {
@@ -931,6 +1055,10 @@ function stopJoystick() {
   joystick.classList.remove("is-active");
 }
 
+function isMobileAttackArea(event) {
+  return event.pointerType === "touch" && event.clientX >= window.innerWidth / 2;
+}
+
 function handlePointerDown(event) {
   if (event.pointerType !== "touch") return;
   if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -938,6 +1066,13 @@ function handlePointerDown(event) {
 
   event.preventDefault();
   stopAutoWalk();
+
+  if (isMobileAttackArea(event)) {
+    stopJoystick();
+    attackNearestEnemy();
+    return;
+  }
+
   joystickState.active = true;
   joystickState.pointerId = event.pointerId;
   joystickState.origin = { x: event.clientX, y: event.clientY };
